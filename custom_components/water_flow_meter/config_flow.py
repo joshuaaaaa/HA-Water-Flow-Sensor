@@ -52,7 +52,9 @@ class WaterFlowMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_SOURCE_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor"),
+                    selector.EntitySelectorConfig(
+                        domain=["sensor", "counter", "input_number"],
+                    ),
                 ),
                 vol.Required(
                     CONF_PULSES_PER_LITER,

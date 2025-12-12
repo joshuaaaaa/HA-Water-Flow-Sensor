@@ -5,12 +5,12 @@
         "title": "Water Flow Meter Setup",
         "description": "Configure your water flow meter sensor",
         "data": {
-          "source_sensor": "Source Pulse Sensor",
+          "source_sensor": "Source Entity",
           "pulses_per_liter": "Pulses per Liter",
           "flow_rate_window": "Flow Rate Window"
         },
         "data_description": {
-          "source_sensor": "Select the sensor that provides pulse counts",
+          "source_sensor": "Select the entity that provides pulse counts (sensor, counter or input_number)",
           "pulses_per_liter": "Number of pulses per liter (depends on your flow meter)",
           "flow_rate_window": "Time window in seconds for calculating flow rate"
         }

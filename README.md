@@ -52,7 +52,7 @@ Custom komponenta pro Home Assistant pro měření průtoku vody na základě pu
 2. Klikněte na **+ PŘIDAT INTEGRACI**
 3. Vyhledejte **"Water Flow Meter"**
 4. Vyplňte konfigurační formulář:
-   - **Zdrojový pulzní senzor**: Vyberte senzor, který počítá pulzy (např. `sensor.water_pulse_counter`)
+   - **Zdrojový pulzní senzor**: Vyberte entitu, která počítá pulzy (sensor, counter nebo input_number - např. `sensor.water_pulse_counter`, `counter.water_pulses`)
    - **Pulzy na litr**: Zadejte, kolik pulzů odpovídá jednomu litru (např. 1.0 pro typické průtokoměry)
    - **Časové okno**: Časový interval pro výpočet průtoku (výchozí 60 sekund)
 
@@ -74,6 +74,34 @@ sensor:
       name: "Water Total Pulses"
       unit_of_measurement: "pulses"
 ```
+
+### Použití s Home Assistant Counter
+
+Pokud chcete použít vestavěnou HA counter entitu (např. pro testování):
+
+```yaml
+# configuration.yaml
+counter:
+  water_pulses:
+    name: Water Pulse Counter
+    initial: 0
+    step: 1
+    icon: mdi:counter
+
+# Automatizace pro inkrementaci (příklad s binary senzorem)
+automation:
+  - alias: "Increment water pulse counter"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.water_flow_pulse
+        to: "on"
+    action:
+      - service: counter.increment
+        target:
+          entity_id: counter.water_pulses
+```
+
+Pak použijte `counter.water_pulses` jako zdrojový senzor v konfiguraci Water Flow Meter.
 
 ## Jak to funguje
 

@@ -5,12 +5,12 @@
         "title": "Nastavení měřiče průtoku vody",
         "description": "Nakonfigurujte senzor průtoku vody",
         "data": {
-          "source_sensor": "Zdrojový pulzní senzor",
+          "source_sensor": "Zdrojová entita",
           "pulses_per_liter": "Pulzy na litr",
           "flow_rate_window": "Časové okno průtoku"
         },
         "data_description": {
-          "source_sensor": "Vyberte senzor, který poskytuje počty pulzů",
+          "source_sensor": "Vyberte entitu, která poskytuje počty pulzů (sensor, counter nebo input_number)",
           "pulses_per_liter": "Počet pulzů na litr (závisí na vašem průtokoměru)",
           "flow_rate_window": "Časové okno v sekundách pro výpočet průtoku"
         }
