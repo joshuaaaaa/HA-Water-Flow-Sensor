@@ -1,0 +1,36 @@
+reset_total_volume:
+  name: Reset total volume
+  description: Reset the total water volume counter to zero
+  target:
+    entity:
+      integration: water_flow_meter
+      domain: sensor
+
+set_total_volume:
+  name: Set total volume
+  description: Set the total water volume to a specific value
+  target:
+    entity:
+      integration: water_flow_meter
+      domain: sensor
+  fields:
+    volume:
+      name: Volume
+      description: The volume value to set (in liters)
+      required: true
+      example: 1500.5
+      selector:
+        number:
+          min: 0
+          max: 1000000
+          step: 0.001
+          unit_of_measurement: "L"
+          mode: box
+
+reset_daily_statistics:
+  name: Reset daily statistics
+  description: Reset daily statistics (max flow, average flow, duration)
+  target:
+    entity:
+      integration: water_flow_meter
+      domain: sensor

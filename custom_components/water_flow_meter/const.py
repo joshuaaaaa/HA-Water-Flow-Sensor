@@ -20,3 +20,16 @@ SENSOR_TYPE_TOTAL_VOLUME = "total_volume"
 ATTR_LAST_PULSE_TIME = "last_pulse_time"
 ATTR_PULSE_COUNT = "pulse_count"
 ATTR_PULSES_PER_LITER = "pulses_per_liter"
+
+# Services
+SERVICE_RESET_TOTAL_VOLUME = "reset_total_volume"
+SERVICE_SET_TOTAL_VOLUME = "set_total_volume"
+SERVICE_RESET_DAILY_STATISTICS = "reset_daily_statistics"
+
+# Service attributes
+ATTR_VOLUME = "volume"
+ATTR_ENTITY_ID = "entity_id"
+
+# Device info
+MANUFACTURER = "Water Flow Meter"
+MODEL = "Custom Integration"

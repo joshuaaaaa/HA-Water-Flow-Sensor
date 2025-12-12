@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
+    RestoreEntity,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -18,6 +19,7 @@ from homeassistant.const import (
     UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
@@ -32,6 +34,8 @@ from .const import (
     ATTR_LAST_PULSE_TIME,
     ATTR_PULSE_COUNT,
     ATTR_PULSES_PER_LITER,
+    MANUFACTURER,
+    MODEL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,6 +62,37 @@ class WaterFlowStatistics:
         self.all_pulse_times: deque = deque(maxlen=1000)  # Keep last 1000 pulses
         self.last_pulse_time: datetime | None = None
         self.last_pulse_value: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert statistics to dictionary for persistence."""
+        return {
+            "max_flow_today": self.max_flow_today,
+            "total_flow_duration_today": self.total_flow_duration_today,
+            "flow_start_time": self.flow_start_time.isoformat() if self.flow_start_time else None,
+            "last_reset_date": self.last_reset_date.isoformat(),
+            "last_pulse_time": self.last_pulse_time.isoformat() if self.last_pulse_time else None,
+            "start_time": self.start_time.isoformat(),
+        }
+
+    def from_dict(self, data: dict[str, Any]) -> None:
+        """Restore statistics from dictionary."""
+        try:
+            self.max_flow_today = data.get("max_flow_today", 0.0)
+            self.total_flow_duration_today = data.get("total_flow_duration_today", 0.0)
+
+            if flow_start := data.get("flow_start_time"):
+                self.flow_start_time = dt_util.parse_datetime(flow_start)
+
+            if last_reset := data.get("last_reset_date"):
+                self.last_reset_date = dt_util.parse_date(last_reset)
+
+            if last_pulse := data.get("last_pulse_time"):
+                self.last_pulse_time = dt_util.parse_datetime(last_pulse)
+
+            if start := data.get("start_time"):
+                self.start_time = dt_util.parse_datetime(start)
+        except (ValueError, TypeError) as err:
+            _LOGGER.warning("Failed to restore statistics: %s", err)
 
     def reset_daily_stats(self) -> None:
         """Reset daily statistics."""
@@ -148,6 +183,18 @@ class WaterFlowStatistics:
         return (dt_util.utcnow() - self.start_time).total_seconds()
 
 
+
+
+def get_device_info(source_sensor: str, entry_id: str) -> DeviceInfo:
+    """Get device info for all sensors."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry_id)},
+        name=f"Water Flow Meter ({source_sensor.split('.')[-1]})",
+        manufacturer=MANUFACTURER,
+        model=MODEL,
+        configuration_url="https://github.com/yourusername/HA-Water-Flow-Sensor",
+    )
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -171,6 +218,22 @@ async def async_setup_entry(
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
     hass.data[DOMAIN][config_entry.entry_id] = {"stats": stats}
+
+    entities = [
+        # Flow rate sensors
+        WaterFlowRateSensor(source_sensor, pulses_per_liter, flow_rate_window, config_entry.entry_id, stats),
+        WaterFlowRateHourlySensor(source_sensor, pulses_per_liter, flow_rate_window, config_entry.entry_id, stats),
+        WaterFlowRateSecondarySensor(source_sensor, pulses_per_liter, flow_rate_window, config_entry.entry_id, stats),
+        WaterPulseRateSensor(source_sensor, flow_rate_window, config_entry.entry_id, stats),
+        WaterTotalVolumeSensor(source_sensor, pulses_per_liter, config_entry.entry_id, stats),
+        WaterTimeSinceLastPulseSensor(source_sensor, config_entry.entry_id, stats),
+        WaterAveragePulseIntervalSensor(source_sensor, config_entry.entry_id, stats),
+        WaterUptimeSensor(source_sensor, config_entry.entry_id, stats),
+    ]
+
+    # Store entities for service calls
+    hass.data[DOMAIN][config_entry.entry_id]["entities"] = entities
+
 
     async_add_entities(
         [
@@ -238,6 +301,7 @@ class WaterFlowRateSensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.LITERS_PER_MINUTE
     _attr_icon = "mdi:water-pump"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -254,8 +318,9 @@ class WaterFlowRateSensor(SensorEntity):
         self._entry_id = entry_id
         self._stats = stats
 
-        self._attr_name = f"Water Flow Rate ({source_sensor.split('.')[-1]})"
+        self._attr_name = "Flow Rate"
         self._attr_unique_id = f"{entry_id}_flow_rate"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
 
         self._pulse_times: deque = deque()
 
@@ -349,6 +414,7 @@ class WaterFlowRateHourlySensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "L/h"
     _attr_icon = "mdi:water-pump"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -365,10 +431,17 @@ class WaterFlowRateHourlySensor(SensorEntity):
         self._entry_id = entry_id
         self._stats = stats
 
-        self._attr_name = f"Water Flow Rate Hourly ({source_sensor.split('.')[-1]})"
+        self._attr_name = "Flow Rate Hourly"
         self._attr_unique_id = f"{entry_id}_flow_rate_hourly"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
 
         self._pulse_times: deque = deque()
+
+    async def async_reset_daily_statistics(self) -> None:
+        """Reset daily statistics."""
+        self._stats.reset_daily_stats()
+        self.async_write_ha_state()
+
 
     async def async_added_to_hass(self) -> None:
         """Register state listener."""
@@ -436,6 +509,7 @@ class WaterFlowRateSecondarySensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "L/s"
     _attr_icon = "mdi:water-pump"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -452,8 +526,9 @@ class WaterFlowRateSecondarySensor(SensorEntity):
         self._entry_id = entry_id
         self._stats = stats
 
-        self._attr_name = f"Water Flow Rate Secondary ({source_sensor.split('.')[-1]})"
+        self._attr_name = "Flow Rate Secondary"
         self._attr_unique_id = f"{entry_id}_flow_rate_secondary"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
 
         self._pulse_times: deque = deque()
 
@@ -522,6 +597,7 @@ class WaterPulseRateSensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "pulses/min"
     _attr_icon = "mdi:counter"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -536,8 +612,9 @@ class WaterPulseRateSensor(SensorEntity):
         self._entry_id = entry_id
         self._stats = stats
 
-        self._attr_name = f"Water Pulse Rate ({source_sensor.split('.')[-1]})"
+        self._attr_name = "Pulse Rate"
         self._attr_unique_id = f"{entry_id}_pulse_rate"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
 
         self._pulse_times: deque = deque()
 
@@ -604,13 +681,14 @@ class WaterPulseRateSensor(SensorEntity):
         return attrs
 
 
-class WaterTotalVolumeSensor(SensorEntity):
+class WaterTotalVolumeSensor(RestoreEntity, SensorEntity):
     """Sensor for total water volume in liters."""
 
     _attr_device_class = SensorDeviceClass.WATER
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = UnitOfVolume.LITERS
     _attr_icon = "mdi:water"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -625,13 +703,36 @@ class WaterTotalVolumeSensor(SensorEntity):
         self._entry_id = entry_id
         self._stats = stats
 
-        self._attr_name = f"Water Total Volume ({source_sensor.split('.')[-1]})"
+        self._attr_name = "Total Volume"
         self._attr_unique_id = f"{entry_id}_total_volume"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
 
         self._total_pulses: float = 0.0
 
-    async def async_added_to_hass(self) -> None:
-        """Register state listener."""
+        async def async_added_to_hass(self) -> None:
+        """Restore state and register state listener."""
+        await super().async_added_to_hass()
+
+        # Restore previous state
+        if (last_state := await self.async_get_last_state()) is not None:
+            try:
+                # Restore total pulses from attributes
+                if ATTR_PULSE_COUNT in last_state.attributes:
+                    self._total_pulses = float(last_state.attributes[ATTR_PULSE_COUNT])
+                    _LOGGER.info(
+                        "Restored total pulses: %s for %s",
+                        self._total_pulses,
+                        self.entity_id,
+                    )
+
+                # Restore statistics if available
+                if "statistics" in last_state.attributes:
+                    self._stats.from_dict(last_state.attributes["statistics"])
+                    _LOGGER.info("Restored statistics for %s", self.entity_id)
+            except (ValueError, TypeError, KeyError) as err:
+                _LOGGER.warning("Failed to restore state for %s: %s", self.entity_id, err)
+
+        # Register state change listener
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass, self._source_sensor, self._async_sensor_changed
@@ -642,65 +743,23 @@ class WaterTotalVolumeSensor(SensorEntity):
         if state := self.hass.states.get(self._source_sensor):
             try:
                 self._stats.last_pulse_value = float(state.state)
-                self._total_pulses = self._stats.last_pulse_value
+                if self._total_pulses == 0:
+                    self._total_pulses = self._stats.last_pulse_value
             except (ValueError, TypeError):
                 pass
 
-    @callback
-    def _async_sensor_changed(self, event) -> None:
-        """Handle source sensor state changes."""
-        new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            return
-
-        try:
-            new_value = float(new_state.state)
-        except (ValueError, TypeError):
-            return
-
-        # Detect pulse (increment in value)
-        if self._stats.last_pulse_value is not None and new_value > self._stats.last_pulse_value:
-            pulse_count = new_value - self._stats.last_pulse_value
-            self._total_pulses += pulse_count
-
+    async def async_reset_total_volume(self) -> None:
+        """Reset total volume to zero."""
+        self._total_pulses = 0.0
         self.async_write_ha_state()
+        _LOGGER.info("Reset total volume for %s", self.entity_id)
 
-    @property
-    def native_value(self) -> float | None:
-        """Return the total volume in liters."""
-        total_liters = self._total_pulses / self._pulses_per_liter
-        return round(total_liters, 3)
+    async def async_set_total_volume(self, volume: float) -> None:
+        """Set total volume to a specific value."""
+        self._total_pulses = volume * self._pulses_per_liter
+        self.async_write_ha_state()
+        _LOGGER.info("Set total volume to %s L for %s", volume, self.entity_id)
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
-        return {
-            ATTR_PULSES_PER_LITER: self._pulses_per_liter,
-            ATTR_PULSE_COUNT: self._total_pulses,
-        }
-
-
-class WaterTimeSinceLastPulseSensor(SensorEntity):
-    """Sensor for time since last pulse."""
-
-    _attr_device_class = SensorDeviceClass.DURATION
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
-    _attr_icon = "mdi:timer-outline"
-
-    def __init__(
-        self,
-        source_sensor: str,
-        entry_id: str,
-        stats: WaterFlowStatistics,
-    ) -> None:
-        """Initialize the sensor."""
-        self._source_sensor = source_sensor
-        self._entry_id = entry_id
-        self._stats = stats
-
-        self._attr_name = f"Water Time Since Last Pulse ({source_sensor.split('.')[-1]})"
-        self._attr_unique_id = f"{entry_id}_time_since_last_pulse"
 
     async def async_added_to_hass(self) -> None:
         """Register state listener."""
@@ -739,6 +798,7 @@ class WaterAveragePulseIntervalSensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_icon = "mdi:timer"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -751,8 +811,9 @@ class WaterAveragePulseIntervalSensor(SensorEntity):
         self._entry_id = entry_id
         self._stats = stats
 
-        self._attr_name = f"Water Average Pulse Interval ({source_sensor.split('.')[-1]})"
+        self._attr_name = "Average Pulse Interval"
         self._attr_unique_id = f"{entry_id}_average_pulse_interval"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
 
     async def async_added_to_hass(self) -> None:
         """Register state listener."""
@@ -779,7 +840,9 @@ class WaterAveragePulseIntervalSensor(SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         return {
-            "pulse_count": len(self._stats.all_pulse_times),
+            ATTR_PULSES_PER_LITER: self._pulses_per_liter,
+            ATTR_PULSE_COUNT: self._total_pulses,
+            "statistics": self._stats.to_dict(),
         }
 
 
@@ -790,6 +853,7 @@ class WaterUptimeSensor(SensorEntity):
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
     _attr_icon = "mdi:clock-outline"
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -802,8 +866,9 @@ class WaterUptimeSensor(SensorEntity):
         self._entry_id = entry_id
         self._stats = stats
 
-        self._attr_name = f"Water Meter Uptime ({source_sensor.split('.')[-1]})"
+        self._attr_name = "Meter Uptime"
         self._attr_unique_id = f"{entry_id}_uptime"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
 
     async def async_added_to_hass(self) -> None:
         """Register state listener."""

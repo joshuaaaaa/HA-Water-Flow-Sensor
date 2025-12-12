@@ -34,6 +34,9 @@ Custom komponenta pro Home Assistant pro měření průtoku vody na základě pu
 - 🔧 **Nastavitelné parametry:**
   - Počet pulzů na litr (podle vašeho průtokoměru)
   - Časové okno pro výpočet průtoku (10-600 sekund)
+- 💾 **Persistence** - data se zachovávají při restartu HA
+- 🎛️ **Služby (Services)** - reset, kalibrace a správa dat
+- 📱 **Device Registry** - všechny senzory seskupené pod jedno zařízení
 - 🌍 **Vícejazyčné** - podporuje češtinu a angličtinu
 - 📊 **Kompatibilní s Energy Dashboard** - total volume sensor je připraven pro HA Energy
 - 📈 **Detailní statistiky** - sledování denních maxim, průměrů a dob průtoku
@@ -301,6 +304,90 @@ template:
 | Custom | ? | Zkontrolujte dokumentaci vašeho průtokoměru |
 
 💡 **Tip:** Hodnotu "pulzy na litr" můžete později upravit v nastavení integrace bez nutnosti rekonfigurace.
+
+## 🎛️ Služby (Services)
+
+Komponenta poskytuje tři služby pro ovládání a kalibraci:
+
+### Reset Total Volume
+
+Resetuje celkový objem vody na nulu.
+
+```yaml
+service: water_flow_meter.reset_total_volume
+target:
+  entity_id: sensor.water_total_volume_water_pulse_counter
+```
+
+**Použití**: Když chcete začít měřit spotřebu od nuly.
+
+### Set Total Volume
+
+Nastaví celkový objem na konkrétní hodnotu (kalibrace).
+
+```yaml
+service: water_flow_meter.set_total_volume
+data:
+  volume: 1500.5  # litrů
+target:
+  entity_id: sensor.water_total_volume_water_pulse_counter
+```
+
+**Použití**: Pro kalibraci - když známe skutečnou spotřebu z fyzického vodoměru.
+
+### Reset Daily Statistics
+
+Resetuje denní statistiky (max průtok, průměr, dobu průtoku).
+
+```yaml
+service: water_flow_meter.reset_daily_statistics
+target:
+  entity_id: sensor.water_flow_rate_water_pulse_counter
+```
+
+**Použití**: Manuální reset statistik (normálně se resetují o půlnoci automaticky).
+
+## 💾 Persistence (Zachování dat)
+
+Komponenta automaticky ukládá a obnovuje data při restartu Home Assistant:
+
+### Co se zachovává:
+- ✅ **Celkový objem vody** - neztratíte data o spotřebě
+- ✅ **Denní statistiky** - max průtok, průměr, doba průtoku
+- ✅ **Čas spuštění** - pro správný uptime
+- ✅ **Poslední pulz** - pro kontinuitu měření
+
+### Automatické obnovení:
+```
+[2025-12-12 10:15:23] INFO: Restored total pulses: 15432.0 for sensor.water_total_volume_xxx
+[2025-12-12 10:15:23] INFO: Restored statistics for sensor.water_total_volume_xxx
+```
+
+Data jsou uložena v atributech senzorů a automaticky se obnovují po:
+- Restartu Home Assistant
+- Reload integrace
+- Aktualizaci komponenty
+
+## 📱 Device Registry
+
+Všechny senzory jsou seskupené pod jedno "zařízení" v Home Assistant:
+
+```
+Water Flow Meter (sensor.water_pulse_counter)
+├── Flow Rate (L/min)
+├── Flow Rate Hourly (L/h)
+├── Flow Rate Secondary (L/s)
+├── Pulse Rate (pulses/min)
+├── Total Volume (L)
+├── Time Since Last Pulse (s)
+├── Average Pulse Interval (s)
+└── Meter Uptime (s)
+```
+
+**Výhody**:
+- Lepší organizace v UI
+- Snadná správa všech senzorů najednou
+- Přehledné zobrazení v Nastavení → Zařízení a služby
 
 ## Řešení problémů
 
