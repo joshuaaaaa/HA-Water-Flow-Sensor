@@ -60,6 +60,7 @@ class WaterFlowStatistics:
 
         # Pulse tracking
         self.all_pulse_times: deque = deque(maxlen=1000)  # Keep last 1000 pulses
+        self.flow_pulse_times: deque = deque()  # Shared deque for flow rate window
         self.last_pulse_time: datetime | None = None
         self.last_pulse_value: float | None = None
 
@@ -150,7 +151,14 @@ class WaterFlowStatistics:
         """Add pulse(s) to tracking."""
         for _ in range(pulse_count):
             self.all_pulse_times.append(pulse_time)
+            self.flow_pulse_times.append(pulse_time)
         self.last_pulse_time = pulse_time
+
+    def clean_old_flow_pulses(self, window_seconds: int) -> None:
+        """Remove pulses older than the window."""
+        cutoff_time = dt_util.utcnow() - timedelta(seconds=window_seconds)
+        while self.flow_pulse_times and self.flow_pulse_times[0] < cutoff_time:
+            self.flow_pulse_times.popleft()
 
     def get_average_pulse_interval(self) -> float | None:
         """Get average interval between pulses in seconds."""
@@ -264,8 +272,6 @@ class WaterFlowRateSensor(SensorEntity):
         self._attr_unique_id = f"{entry_id}_flow_rate"
         self._attr_device_info = get_device_info(source_sensor, entry_id)
 
-        self._pulse_times: deque = deque()
-
     async def async_added_to_hass(self) -> None:
         """Register state listener."""
         self.async_on_remove(
@@ -298,19 +304,13 @@ class WaterFlowRateSensor(SensorEntity):
             pulse_count = int(new_value - self._stats.last_pulse_value)
             now = dt_util.utcnow()
 
-            # Add pulse times to the deque
-            for _ in range(pulse_count):
-                self._pulse_times.append(now)
-
-            # Update shared statistics
+            # Update shared statistics (adds to both all_pulse_times and flow_pulse_times)
             self._stats.add_pulse(now, pulse_count)
 
         self._stats.last_pulse_value = new_value
 
         # Clean old pulses outside the time window
-        cutoff_time = dt_util.utcnow() - timedelta(seconds=self._flow_rate_window)
-        while self._pulse_times and self._pulse_times[0] < cutoff_time:
-            self._pulse_times.popleft()
+        self._stats.clean_old_flow_pulses(self._flow_rate_window)
 
         # Update flow statistics
         current_flow = self.native_value or 0.0
@@ -321,11 +321,11 @@ class WaterFlowRateSensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per minute."""
-        if not self._pulse_times:
+        if not self._stats.flow_pulse_times:
             return 0.0
 
         # Calculate pulses per minute based on the time window
-        pulses_in_window = len(self._pulse_times)
+        pulses_in_window = len(self._stats.flow_pulse_times)
         window_minutes = self._flow_rate_window / 60.0
 
         pulses_per_minute = pulses_in_window / window_minutes if window_minutes > 0 else 0
@@ -338,7 +338,7 @@ class WaterFlowRateSensor(SensorEntity):
         """Return extra state attributes."""
         attrs = {
             ATTR_PULSES_PER_LITER: self._pulses_per_liter,
-            ATTR_PULSE_COUNT: len(self._pulse_times),
+            ATTR_PULSE_COUNT: len(self._stats.flow_pulse_times),
             "max_flow_today": round(self._stats.max_flow_today, 2),
             "average_flow_today": round(self._stats.get_average_flow_today(), 2),
             "total_flow_duration_today": round(self._stats.total_flow_duration_today, 1),
@@ -377,8 +377,6 @@ class WaterFlowRateHourlySensor(SensorEntity):
         self._attr_unique_id = f"{entry_id}_flow_rate_hourly"
         self._attr_device_info = get_device_info(source_sensor, entry_id)
 
-        self._pulse_times: deque = deque()
-
     async def async_added_to_hass(self) -> None:
         """Register state listener."""
         self.async_on_remove(
@@ -390,39 +388,16 @@ class WaterFlowRateHourlySensor(SensorEntity):
     @callback
     def _async_sensor_changed(self, event) -> None:
         """Handle source sensor state changes."""
-        new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            return
-
-        try:
-            new_value = float(new_state.state)
-        except (ValueError, TypeError):
-            return
-
-        # Detect pulse (increment in value)
-        if self._stats.last_pulse_value is not None and new_value > self._stats.last_pulse_value:
-            pulse_count = int(new_value - self._stats.last_pulse_value)
-            now = dt_util.utcnow()
-
-            # Add pulse times to the deque
-            for _ in range(pulse_count):
-                self._pulse_times.append(now)
-
-        # Clean old pulses outside the time window
-        cutoff_time = dt_util.utcnow() - timedelta(seconds=self._flow_rate_window)
-        while self._pulse_times and self._pulse_times[0] < cutoff_time:
-            self._pulse_times.popleft()
-
         self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per hour."""
-        if not self._pulse_times:
+        if not self._stats.flow_pulse_times:
             return 0.0
 
         # Calculate pulses per hour based on the time window
-        pulses_in_window = len(self._pulse_times)
+        pulses_in_window = len(self._stats.flow_pulse_times)
         window_hours = self._flow_rate_window / 3600.0
 
         pulses_per_hour = pulses_in_window / window_hours if window_hours > 0 else 0
@@ -435,7 +410,7 @@ class WaterFlowRateHourlySensor(SensorEntity):
         """Return extra state attributes."""
         return {
             ATTR_PULSES_PER_LITER: self._pulses_per_liter,
-            ATTR_PULSE_COUNT: len(self._pulse_times),
+            ATTR_PULSE_COUNT: len(self._stats.flow_pulse_times),
         }
 
 
@@ -466,8 +441,6 @@ class WaterFlowRateSecondarySensor(SensorEntity):
         self._attr_unique_id = f"{entry_id}_flow_rate_secondary"
         self._attr_device_info = get_device_info(source_sensor, entry_id)
 
-        self._pulse_times: deque = deque()
-
     async def async_added_to_hass(self) -> None:
         """Register state listener."""
         self.async_on_remove(
@@ -479,39 +452,16 @@ class WaterFlowRateSecondarySensor(SensorEntity):
     @callback
     def _async_sensor_changed(self, event) -> None:
         """Handle source sensor state changes."""
-        new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            return
-
-        try:
-            new_value = float(new_state.state)
-        except (ValueError, TypeError):
-            return
-
-        # Detect pulse (increment in value)
-        if self._stats.last_pulse_value is not None and new_value > self._stats.last_pulse_value:
-            pulse_count = int(new_value - self._stats.last_pulse_value)
-            now = dt_util.utcnow()
-
-            # Add pulse times to the deque
-            for _ in range(pulse_count):
-                self._pulse_times.append(now)
-
-        # Clean old pulses outside the time window
-        cutoff_time = dt_util.utcnow() - timedelta(seconds=self._flow_rate_window)
-        while self._pulse_times and self._pulse_times[0] < cutoff_time:
-            self._pulse_times.popleft()
-
         self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per second."""
-        if not self._pulse_times:
+        if not self._stats.flow_pulse_times:
             return 0.0
 
         # Calculate pulses per second based on the time window
-        pulses_in_window = len(self._pulse_times)
+        pulses_in_window = len(self._stats.flow_pulse_times)
 
         pulses_per_second = pulses_in_window / self._flow_rate_window if self._flow_rate_window > 0 else 0
         liters_per_second = pulses_per_second / self._pulses_per_liter
@@ -523,7 +473,7 @@ class WaterFlowRateSecondarySensor(SensorEntity):
         """Return extra state attributes."""
         return {
             ATTR_PULSES_PER_LITER: self._pulses_per_liter,
-            ATTR_PULSE_COUNT: len(self._pulse_times),
+            ATTR_PULSE_COUNT: len(self._stats.flow_pulse_times),
         }
 
 
@@ -552,8 +502,6 @@ class WaterPulseRateSensor(SensorEntity):
         self._attr_unique_id = f"{entry_id}_pulse_rate"
         self._attr_device_info = get_device_info(source_sensor, entry_id)
 
-        self._pulse_times: deque = deque()
-
     async def async_added_to_hass(self) -> None:
         """Register state listener."""
         self.async_on_remove(
@@ -565,39 +513,16 @@ class WaterPulseRateSensor(SensorEntity):
     @callback
     def _async_sensor_changed(self, event) -> None:
         """Handle source sensor state changes."""
-        new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            return
-
-        try:
-            new_value = float(new_state.state)
-        except (ValueError, TypeError):
-            return
-
-        # Detect pulse (increment in value)
-        if self._stats.last_pulse_value is not None and new_value > self._stats.last_pulse_value:
-            pulse_count = int(new_value - self._stats.last_pulse_value)
-            now = dt_util.utcnow()
-
-            # Add pulse times to the deque
-            for _ in range(pulse_count):
-                self._pulse_times.append(now)
-
-        # Clean old pulses outside the time window
-        cutoff_time = dt_util.utcnow() - timedelta(seconds=self._flow_rate_window)
-        while self._pulse_times and self._pulse_times[0] < cutoff_time:
-            self._pulse_times.popleft()
-
         self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
         """Return the pulse rate per minute."""
-        if not self._pulse_times:
+        if not self._stats.flow_pulse_times:
             return 0.0
 
         # Calculate pulses per minute based on the time window
-        pulses_in_window = len(self._pulse_times)
+        pulses_in_window = len(self._stats.flow_pulse_times)
         window_minutes = self._flow_rate_window / 60.0
 
         pulses_per_minute = pulses_in_window / window_minutes if window_minutes > 0 else 0
@@ -608,7 +533,7 @@ class WaterPulseRateSensor(SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         attrs = {
-            ATTR_PULSE_COUNT: len(self._pulse_times),
+            ATTR_PULSE_COUNT: len(self._stats.flow_pulse_times),
         }
 
         if self._stats.last_pulse_time:
