@@ -1,0 +1,82 @@
+# ESPHome configuration example for water flow meter with pulse counter
+# This example shows how to set up a pulse counter sensor that can be used
+# as a source sensor for the Water Flow Meter custom component
+
+esphome:
+  name: water-flow-sensor
+  platform: ESP8266
+  board: d1_mini
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  password: !secret ota_password
+
+logger:
+
+# Pulse counter sensor - connects to GPIO pin where your flow meter is connected
+sensor:
+  - platform: pulse_counter
+    pin:
+      number: GPIO13  # Change this to match your wiring
+      mode: INPUT_PULLUP
+    name: "Water Pulse Counter"
+    id: water_pulse_counter
+    unit_of_measurement: "pulses/min"
+    icon: "mdi:counter"
+    count_mode:
+      rising_edge: INCREMENT  # Count on rising edge
+      falling_edge: DISABLE   # Don't count on falling edge
+    update_interval: 1s  # Update every second
+    internal_filter: 10ms  # Debounce filter
+    accuracy_decimals: 0
+
+    # Total pulse counter - this is what you'll use in HA Water Flow Meter
+    total:
+      name: "Water Total Pulses"
+      id: water_total_pulses
+      unit_of_measurement: "pulses"
+      icon: "mdi:counter"
+      accuracy_decimals: 0
+      # Make this sensor persistent across reboots
+      filters:
+        - lambda: return x;
+
+# Optional: Calculate flow rate directly in ESPHome
+# (you can also let the HA component do this)
+#  - platform: template
+#    name: "Water Flow Rate"
+#    id: water_flow_rate
+#    unit_of_measurement: "L/min"
+#    icon: "mdi:water-pump"
+#    accuracy_decimals: 2
+#    lambda: |-
+#      // Assumes 1 pulse = 1 liter (adjust based on your meter)
+#      return id(water_pulse_counter).state / 1.0;
+
+# Optional: Total water consumption in liters
+#  - platform: integration
+#    name: "Water Total Consumption"
+#    sensor: water_flow_rate
+#    time_unit: min
+#    unit_of_measurement: "L"
+#    icon: "mdi:water"
+#    accuracy_decimals: 2
+
+# Optional: WiFi signal strength
+  - platform: wifi_signal
+    name: "Water Sensor WiFi Signal"
+    update_interval: 60s
+
+# Status LED (optional)
+status_led:
+  pin:
+    number: GPIO2
+    inverted: true

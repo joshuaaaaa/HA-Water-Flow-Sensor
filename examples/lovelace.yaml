@@ -1,0 +1,266 @@
+# Example Lovelace dashboard cards for Water Flow Meter
+
+# 1. Simple Entities Card
+- type: entities
+  title: Spotřeba vody
+  icon: mdi:water
+  entities:
+    - entity: sensor.water_flow_rate_water_total_pulses
+      name: Aktuální průtok
+      icon: mdi:water-pump
+    - entity: sensor.water_pulse_rate_water_total_pulses
+      name: Pulzy za minutu
+      icon: mdi:counter
+    - entity: sensor.water_total_volume_water_total_pulses
+      name: Celková spotřeba
+      icon: mdi:water
+    - type: divider
+    - entity: sensor.water_daily
+      name: Dnes
+    - entity: sensor.water_monthly
+      name: Tento měsíc
+
+# 2. Gauge Card for Flow Rate
+- type: gauge
+  entity: sensor.water_flow_rate_water_total_pulses
+  name: Průtok vody
+  unit: L/min
+  min: 0
+  max: 30
+  severity:
+    green: 0
+    yellow: 15
+    red: 25
+  needle: true
+
+# 3. Statistics Graph Card
+- type: statistics-graph
+  title: Historie průtoku vody
+  entities:
+    - sensor.water_flow_rate_water_total_pulses
+  stat_types:
+    - mean
+    - max
+    - min
+  period:
+    calendar:
+      period: day
+
+# 4. History Graph Card
+- type: history-graph
+  title: Průtok vody - poslední 24 hodin
+  hours_to_show: 24
+  entities:
+    - entity: sensor.water_flow_rate_water_total_pulses
+      name: Průtok
+
+# 5. Sensor Card with Icon
+- type: sensor
+  entity: sensor.water_flow_rate_water_total_pulses
+  name: Aktuální průtok
+  icon: mdi:water-pump
+  graph: line
+
+# 6. Glance Card
+- type: glance
+  title: Přehled spotřeby vody
+  columns: 3
+  entities:
+    - entity: sensor.water_flow_rate_water_total_pulses
+      name: Průtok
+    - entity: sensor.water_daily
+      name: Dnes
+    - entity: sensor.water_monthly
+      name: Měsíc
+
+# 7. Custom Button Card (requires custom:button-card)
+- type: custom:button-card
+  entity: sensor.water_flow_rate_water_total_pulses
+  name: Průtok vody
+  icon: mdi:water-pump
+  show_state: true
+  show_label: true
+  label: |
+    [[[
+      return `Dnes: ${states['sensor.water_daily'].state} L`;
+    ]]]
+  styles:
+    card:
+      - background: |
+          [[[
+            const flow = parseFloat(entity.state);
+            if (flow > 20) return 'rgba(244, 67, 54, 0.2)';
+            if (flow > 10) return 'rgba(255, 152, 0, 0.2)';
+            return 'rgba(76, 175, 80, 0.2)';
+          ]]]
+    name:
+      - font-size: 14px
+      - font-weight: bold
+    state:
+      - font-size: 24px
+      - font-weight: bold
+
+# 8. Mini Graph Card (requires custom:mini-graph-card)
+- type: custom:mini-graph-card
+  entities:
+    - entity: sensor.water_flow_rate_water_total_pulses
+      name: Průtok
+      color: '#03a9f4'
+  name: Průtok vody
+  icon: mdi:water-pump
+  hours_to_show: 24
+  points_per_hour: 4
+  line_width: 3
+  animate: true
+  show:
+    labels: true
+    points: false
+    legend: false
+
+# 9. Vertical Stack with Multiple Cards
+- type: vertical-stack
+  cards:
+    - type: markdown
+      content: |
+        ## 💧 Spotřeba vody
+        Sledování průtoku a spotřeby vody v reálném čase
+
+    - type: horizontal-stack
+      cards:
+        - type: sensor
+          entity: sensor.water_flow_rate_water_total_pulses
+          name: Průtok
+          graph: line
+        - type: sensor
+          entity: sensor.water_total_volume_water_total_pulses
+          name: Celkem
+          graph: line
+
+    - type: entities
+      entities:
+        - entity: sensor.water_daily
+          name: Dnes
+          icon: mdi:calendar-today
+        - entity: sensor.water_weekly
+          name: Tento týden
+          icon: mdi:calendar-week
+        - entity: sensor.water_monthly
+          name: Tento měsíc
+          icon: mdi:calendar-month
+
+# 10. Conditional Card (shows only when water is flowing)
+- type: conditional
+  conditions:
+    - entity: sensor.water_flow_rate_water_total_pulses
+      state_not: "0.0"
+  card:
+    type: markdown
+    content: |
+      ## ⚠️ Voda právě teče!
+      **Průtok:** {{ states('sensor.water_flow_rate_water_total_pulses') }} L/min
+      **Pulzy:** {{ states('sensor.water_pulse_rate_water_total_pulses') }} p/min
+
+# 11. ApexCharts Card (requires custom:apexcharts-card)
+- type: custom:apexcharts-card
+  header:
+    show: true
+    title: Spotřeba vody - poslední týden
+    show_states: true
+  graph_span: 7d
+  series:
+    - entity: sensor.water_daily
+      name: Denní spotřeba
+      type: column
+      color: '#03a9f4'
+      group_by:
+        func: last
+        duration: 1d
+
+# 12. Energy Dashboard Integration Card
+- type: energy-water-graph
+  title: Spotřeba vody
+  entities:
+    - entity: sensor.water_total_volume_water_total_pulses
+
+# 13. Mushroom Cards (requires custom:mushroom cards)
+- type: custom:mushroom-chips-card
+  chips:
+    - type: entity
+      entity: sensor.water_flow_rate_water_total_pulses
+      icon: mdi:water-pump
+      icon_color: blue
+    - type: entity
+      entity: sensor.water_daily
+      icon: mdi:water
+      icon_color: cyan
+
+# 14. Complete Dashboard View
+- title: Spotřeba vody
+  path: water
+  icon: mdi:water
+  badges: []
+  cards:
+    - type: vertical-stack
+      cards:
+        # Header
+        - type: markdown
+          content: |
+            # 💧 Monitoring spotřeby vody
+            Kompletní přehled průtoku a spotřeby vody v domácnosti
+
+        # Current status
+        - type: horizontal-stack
+          cards:
+            - type: gauge
+              entity: sensor.water_flow_rate_water_total_pulses
+              name: Aktuální průtok
+              min: 0
+              max: 30
+              severity:
+                green: 0
+                yellow: 15
+                red: 25
+
+            - type: sensor
+              entity: sensor.water_total_volume_water_total_pulses
+              name: Celková spotřeba
+              graph: line
+
+        # Today's consumption
+        - type: entities
+          title: Dnešní spotřeba
+          entities:
+            - entity: sensor.water_daily
+              name: Spotřeba dnes
+              icon: mdi:water
+            - entity: sensor.water_flow_rate_water_total_pulses
+              name: Aktuální průtok
+              icon: mdi:water-pump
+            - entity: sensor.water_pulse_rate_water_total_pulses
+              name: Pulzy za minutu
+              icon: mdi:counter
+
+        # History graph
+        - type: history-graph
+          title: Průtok - poslední 24 hodin
+          hours_to_show: 24
+          entities:
+            - entity: sensor.water_flow_rate_water_total_pulses
+              name: Průtok vody
+
+        # Period consumption
+        - type: entities
+          title: Spotřeba za období
+          entities:
+            - entity: sensor.water_daily
+              name: Dnes
+              icon: mdi:calendar-today
+            - entity: sensor.water_weekly
+              name: Tento týden
+              icon: mdi:calendar-week
+            - entity: sensor.water_monthly
+              name: Tento měsíc
+              icon: mdi:calendar-month
+            - entity: sensor.water_yearly
+              name: Letos
+              icon: mdi:calendar

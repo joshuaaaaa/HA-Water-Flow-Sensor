@@ -1,0 +1,11 @@
+{
+  "domain": "water_flow_meter",
+  "name": "Water Flow Meter",
+  "codeowners": ["@water_flow_meter"],
+  "config_flow": true,
+  "documentation": "https://github.com/yourusername/water-flow-meter",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "1.0.0"
+}

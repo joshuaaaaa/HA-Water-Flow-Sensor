@@ -1,0 +1,42 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavení měřiče průtoku vody",
+        "description": "Nakonfigurujte senzor průtoku vody",
+        "data": {
+          "source_sensor": "Zdrojový pulzní senzor",
+          "pulses_per_liter": "Pulzy na litr",
+          "flow_rate_window": "Časové okno průtoku"
+        },
+        "data_description": {
+          "source_sensor": "Vyberte senzor, který poskytuje počty pulzů",
+          "pulses_per_liter": "Počet pulzů na litr (závisí na vašem průtokoměru)",
+          "flow_rate_window": "Časové okno v sekundách pro výpočet průtoku"
+        }
+      }
+    },
+    "error": {
+      "unknown": "Došlo k neočekávané chybě"
+    },
+    "abort": {
+      "already_configured": "Tento senzor je již nakonfigurován"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Možnosti měřiče průtoku vody",
+        "description": "Upravte nastavení měřiče průtoku vody",
+        "data": {
+          "pulses_per_liter": "Pulzy na litr",
+          "flow_rate_window": "Časové okno průtoku"
+        },
+        "data_description": {
+          "pulses_per_liter": "Počet pulzů na litr (závisí na vašem průtokoměru)",
+          "flow_rate_window": "Časové okno v sekundách pro výpočet průtoku"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,165 @@
+# Example Home Assistant automations for Water Flow Meter
+
+# 1. Alert on high water flow (possible leak detection)
+- alias: "Water Flow - High Flow Alert"
+  description: "Send notification when water flow is unusually high"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.water_flow_rate_water_total_pulses
+      above: 20  # 20 liters per minute
+      for:
+        minutes: 5
+  condition:
+    - condition: time
+      after: "06:00:00"
+      before: "23:00:00"
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "⚠️ High Water Flow Detected!"
+        message: >
+          Water flow exceeds 20 L/min for 5 minutes.
+          Current flow: {{ states('sensor.water_flow_rate_water_total_pulses') }} L/min
+          Please check for possible leaks.
+        data:
+          priority: high
+          tag: water_flow_alert
+
+# 2. Alert on continuous water flow at night
+- alias: "Water Flow - Night Flow Alert"
+  description: "Alert if water is flowing during night (possible leak)"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.water_flow_rate_water_total_pulses
+      above: 2  # 2 liters per minute
+      for:
+        minutes: 15
+  condition:
+    - condition: time
+      after: "23:00:00"
+      before: "06:00:00"
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "🌙 Water Flow During Night"
+        message: >
+          Water has been flowing for 15 minutes during night.
+          Current flow: {{ states('sensor.water_flow_rate_water_total_pulses') }} L/min
+        data:
+          priority: high
+
+# 3. Daily water consumption report
+- alias: "Water Flow - Daily Consumption Report"
+  description: "Send daily water consumption summary"
+  trigger:
+    - platform: time
+      at: "20:00:00"
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "💧 Daily Water Consumption"
+        message: >
+          Today's water consumption: {{ states('sensor.water_daily') }} L
+          This month: {{ states('sensor.water_monthly') }} L
+
+# 4. Track unusual consumption patterns
+- alias: "Water Flow - Unusual Daily Consumption"
+  description: "Alert if daily consumption is significantly higher than average"
+  trigger:
+    - platform: time
+      at: "21:00:00"
+  condition:
+    - condition: template
+      value_template: >
+        {{ states('sensor.water_daily') | float(0) > 500 }}
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "📊 High Water Consumption Today"
+        message: >
+          Today's water consumption ({{ states('sensor.water_daily') }} L)
+          is higher than usual. Please review your usage.
+
+# 5. Auto-shutoff simulation (requires smart valve)
+# NOTE: This is just an example - adjust to your smart valve entity
+- alias: "Water Flow - Emergency Shutoff"
+  description: "Automatically shut off water on extreme flow"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.water_flow_rate_water_total_pulses
+      above: 50  # 50 liters per minute - extreme flow
+      for:
+        minutes: 2
+  action:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.water_main_valve  # Replace with your valve entity
+    - service: notify.mobile_app
+      data:
+        title: "🚨 EMERGENCY: Water Shut Off"
+        message: >
+          Extreme water flow detected ({{ states('sensor.water_flow_rate_water_total_pulses') }} L/min).
+          Main water valve has been automatically closed.
+        data:
+          priority: high
+          tag: water_emergency
+
+# 6. Reset notification (flow stopped)
+- alias: "Water Flow - Flow Stopped"
+  description: "Notify when continuous flow stops"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.water_flow_rate_water_total_pulses
+      below: 0.5
+      for:
+        minutes: 2
+  condition:
+    - condition: state
+      entity_id: input_boolean.water_flow_alert_active
+      state: "on"
+  action:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.water_flow_alert_active
+    - service: notify.mobile_app
+      data:
+        title: "✅ Water Flow Stopped"
+        message: "Water flow has returned to normal."
+
+# 7. Long shower detection
+- alias: "Water Flow - Long Shower Alert"
+  description: "Remind family members about water conservation"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.water_flow_rate_water_total_pulses
+      above: 8  # Typical shower flow
+      for:
+        minutes: 15  # 15 minute shower
+  action:
+    - service: media_player.play_media
+      target:
+        entity_id: media_player.bathroom_speaker
+      data:
+        media_content_id: "https://your-server/water_conservation_reminder.mp3"
+        media_content_type: "music"
+
+# Utility meters for tracking (add to configuration.yaml)
+# utility_meter:
+#   water_daily:
+#     source: sensor.water_total_volume_water_total_pulses
+#     cycle: daily
+#   water_weekly:
+#     source: sensor.water_total_volume_water_total_pulses
+#     cycle: weekly
+#   water_monthly:
+#     source: sensor.water_total_volume_water_total_pulses
+#     cycle: monthly
+#   water_yearly:
+#     source: sensor.water_total_volume_water_total_pulses
+#     cycle: yearly
+
+# Input boolean for tracking alert state (add to configuration.yaml)
+# input_boolean:
+#   water_flow_alert_active:
+#     name: Water Flow Alert Active
+#     icon: mdi:water-alert

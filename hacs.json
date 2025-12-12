@@ -1,0 +1,7 @@
+{
+  "name": "Water Flow Meter",
+  "content_in_root": false,
+  "filename": "water_flow_meter",
+  "render_readme": true,
+  "domains": ["sensor"]
+}
