@@ -6,20 +6,37 @@ Custom komponenta pro Home Assistant pro měření průtoku vody na základě pu
 
 ## Funkce
 
-✨ **Tři senzory v jednom:**
-- 🚰 **Průtok vody** (litry/minutu) - aktuální rychlost průtoku
+✨ **8 senzorů pro kompletní monitorování:**
+
+### 📊 Senzory průtoku
+- 🚰 **Průtok vody (L/min)** - aktuální rychlost průtoku v litrech za minutu
+- 🌊 **Průtok vody (L/h)** - průtok v litrech za hodinu
+- 💨 **Průtok vody (L/s)** - průtok v litrech za sekundu
 - ⚡ **Pulzy za minutu** - počet pulzů detekovaných za minutu
+
+### 💧 Senzory objemu
 - 💧 **Celkový objem** (litry) - kumulativní spotřeba vody
+
+### 🔍 Diagnostické senzory
+- ⏱️ **Čas od posledního pulzu** - jak dlouho neprošel žádný pulz
+- 📏 **Průměrná doba mezi pulzy** - průměrný interval mezi pulzy
+- 🕐 **Uptime komponenty** - jak dlouho komponenta běží
+
+### 📈 Pokročilé statistiky (atributy)
+- **Maximální průtok dnes** - nejvyšší naměřený průtok za dnešní den
+- **Průměrný průtok dnes** - průměrný průtok za dnešní den
+- **Celková doba průtoku dnes** - jak dlouho dnes voda tekla
 
 ## Hlavní vlastnosti
 
 - ⚙️ **Konfigurovatelné přes UI** - snadné nastavení bez editace YAML
-- 🎯 **Výběr zdrojového senzoru** - připojte jakýkoliv pulzní senzor
+- 🎯 **Výběr zdrojového senzoru** - připojte jakýkoliv sensor, counter nebo input_number
 - 🔧 **Nastavitelné parametry:**
   - Počet pulzů na litr (podle vašeho průtokoměru)
   - Časové okno pro výpočet průtoku (10-600 sekund)
 - 🌍 **Vícejazyčné** - podporuje češtinu a angličtinu
 - 📊 **Kompatibilní s Energy Dashboard** - total volume sensor je připraven pro HA Energy
+- 📈 **Detailní statistiky** - sledování denních maxim, průměrů a dob průtoku
 
 ## Instalace
 
@@ -172,7 +189,11 @@ type: entities
 title: Spotřeba vody
 entities:
   - entity: sensor.water_flow_rate_water_pulse_counter
-    name: Aktuální průtok
+    name: Aktuální průtok (L/min)
+  - entity: sensor.water_flow_rate_hourly_water_pulse_counter
+    name: Průtok (L/h)
+  - entity: sensor.water_flow_rate_secondary_water_pulse_counter
+    name: Průtok (L/s)
   - entity: sensor.water_pulse_rate_water_pulse_counter
     name: Pulzy za minutu
   - entity: sensor.water_total_volume_water_pulse_counter
@@ -182,6 +203,93 @@ entities:
   - entity: sensor.water_monthly
     name: Tento měsíc
 ```
+
+### Využití diagnostických senzorů
+
+```yaml
+# Upozornění když voda neteče příliš dlouho (možný problém)
+automation:
+  - alias: "Diagnostika - žádné pulzy"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.water_time_since_last_pulse_water_pulse_counter
+        above: 86400  # 24 hodin
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "ℹ️ Diagnostika vodoměru"
+          message: "Za posledních 24 hodin nebyl detekován žádný pulz. Zkontrolujte senzor."
+
+# Monitorování průměrného intervalu pulzů
+template:
+  - sensor:
+      - name: "Water Flow Health"
+        state: >
+          {% set interval = states('sensor.water_average_pulse_interval_water_pulse_counter') | float(0) %}
+          {% if interval == 0 %}unknown
+          {% elif interval < 10 %}vysoký průtok
+          {% elif interval < 60 %}normální
+          {% else %}nízký průtok{% endif %}
+```
+
+## Detailní popis senzorů
+
+### 📊 Senzory průtoku
+
+#### Water Flow Rate (L/min)
+- **Entity ID**: `sensor.water_flow_rate_*`
+- **Jednotka**: L/min (litry za minutu)
+- **Účel**: Hlavní senzor průtoku, optimální pro domácí použití
+- **Atributy**:
+  - `max_flow_today` - maximální průtok za dnešní den
+  - `average_flow_today` - průměrný průtok za dnešní den
+  - `total_flow_duration_today` - celková doba průtoku v sekundách
+
+#### Water Flow Rate Hourly (L/h)
+- **Entity ID**: `sensor.water_flow_rate_hourly_*`
+- **Jednotka**: L/h (litry za hodinu)
+- **Účel**: Vhodný pro dlouhodobější sledování nebo pomalejší průtoky
+
+#### Water Flow Rate Secondary (L/s)
+- **Entity ID**: `sensor.water_flow_rate_secondary_*`
+- **Jednotka**: L/s (litry za sekundu)
+- **Účel**: Ideální pro rychlé průtoky nebo průmyslové aplikace
+
+#### Water Pulse Rate
+- **Entity ID**: `sensor.water_pulse_rate_*`
+- **Jednotka**: pulses/min (pulzy za minutu)
+- **Účel**: Zobrazuje surový počet pulzů, užitečné pro diagnostiku senzoru
+
+### 💧 Senzor objemu
+
+#### Water Total Volume
+- **Entity ID**: `sensor.water_total_volume_*`
+- **Jednotka**: L (litry)
+- **Device Class**: water (kompatibilní s Energy Dashboard)
+- **State Class**: total_increasing
+- **Účel**: Celková kumulativní spotřeba vody od spuštění komponenty
+
+### 🔍 Diagnostické senzory
+
+#### Water Time Since Last Pulse
+- **Entity ID**: `sensor.water_time_since_last_pulse_*`
+- **Jednotka**: seconds (sekundy)
+- **Účel**: Monitorování aktivity senzoru, detekce výpadků
+- **Použití**: Upozornění když senzor dlouho nedetekuje pulzy
+
+#### Water Average Pulse Interval
+- **Entity ID**: `sensor.water_average_pulse_interval_*`
+- **Jednotka**: seconds (sekundy)
+- **Účel**: Průměrný čas mezi pulzy (z posledních 100 pulzů)
+- **Použití**: Analýza vzorců spotřeby, kalibrace
+
+#### Water Meter Uptime
+- **Entity ID**: `sensor.water_meter_uptime_*`
+- **Jednotka**: seconds (sekundy)
+- **Účel**: Sledování doby běhu komponenty
+- **Atributy**:
+  - `start_time` - čas spuštění komponenty
+  - `uptime_formatted` - formátovaný uptime (např. "5d 3h 42m")
 
 ## Populární průtokoměry
 
