@@ -422,12 +422,15 @@ class WaterFlowRateHourlySensor(SensorEntity):
         if not self._stats.flow_pulse_times:
             return 0.0
 
-        # Calculate pulses per hour based on the time window
+        # Calculate liters per minute first
         pulses_in_window = len(self._stats.flow_pulse_times)
-        window_hours = self._flow_rate_window / 3600.0
+        window_minutes = self._flow_rate_window / 60.0
 
-        pulses_per_hour = pulses_in_window / window_hours if window_hours > 0 else 0
-        liters_per_hour = pulses_per_hour / self._pulses_per_liter
+        pulses_per_minute = pulses_in_window / window_minutes if window_minutes > 0 else 0
+        liters_per_minute = pulses_per_minute / self._pulses_per_liter
+
+        # Convert to liters per hour (L/min × 60)
+        liters_per_hour = liters_per_minute * 60
 
         return round(liters_per_hour, 2)
 
@@ -489,11 +492,15 @@ class WaterFlowRateSecondarySensor(SensorEntity):
         if not self._stats.flow_pulse_times:
             return 0.0
 
-        # Calculate pulses per second based on the time window
+        # Calculate liters per minute first
         pulses_in_window = len(self._stats.flow_pulse_times)
+        window_minutes = self._flow_rate_window / 60.0
 
-        pulses_per_second = pulses_in_window / self._flow_rate_window if self._flow_rate_window > 0 else 0
-        liters_per_second = pulses_per_second / self._pulses_per_liter
+        pulses_per_minute = pulses_in_window / window_minutes if window_minutes > 0 else 0
+        liters_per_minute = pulses_per_minute / self._pulses_per_liter
+
+        # Convert to liters per second (L/min ÷ 60)
+        liters_per_second = liters_per_minute / 60
 
         return round(liters_per_second, 3)
 
