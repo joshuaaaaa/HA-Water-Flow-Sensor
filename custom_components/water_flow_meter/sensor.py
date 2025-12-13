@@ -307,20 +307,20 @@ class WaterFlowRateSensor(SensorEntity):
             # Update shared statistics (adds to both all_pulse_times and flow_pulse_times)
             self._stats.add_pulse(now, pulse_count)
 
+            # Update flow statistics
+            current_flow = self.native_value or 0.0
+            self._stats.update_flow_stats(current_flow)
+
         self._stats.last_pulse_value = new_value
-
-        # Clean old pulses outside the time window
-        self._stats.clean_old_flow_pulses(self._flow_rate_window)
-
-        # Update flow statistics
-        current_flow = self.native_value or 0.0
-        self._stats.update_flow_stats(current_flow)
 
         self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per minute."""
+        # Clean old pulses before calculating
+        self._stats.clean_old_flow_pulses(self._flow_rate_window)
+
         if not self._stats.flow_pulse_times:
             return 0.0
 
@@ -393,6 +393,9 @@ class WaterFlowRateHourlySensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per hour."""
+        # Clean old pulses before calculating
+        self._stats.clean_old_flow_pulses(self._flow_rate_window)
+
         if not self._stats.flow_pulse_times:
             return 0.0
 
@@ -457,6 +460,9 @@ class WaterFlowRateSecondarySensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per second."""
+        # Clean old pulses before calculating
+        self._stats.clean_old_flow_pulses(self._flow_rate_window)
+
         if not self._stats.flow_pulse_times:
             return 0.0
 
@@ -518,6 +524,9 @@ class WaterPulseRateSensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the pulse rate per minute."""
+        # Clean old pulses before calculating
+        self._stats.clean_old_flow_pulses(self._flow_rate_window)
+
         if not self._stats.flow_pulse_times:
             return 0.0
 
