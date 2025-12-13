@@ -12,7 +12,7 @@
         "data_description": {
           "source_sensor": "Vyberte entitu, která poskytuje počty pulzů (sensor, counter nebo input_number)",
           "pulses_per_liter": "Počet pulzů na litr (závisí na vašem průtokoměru)",
-          "flow_rate_window": "Časové okno v sekundách pro výpočet průtoku"
+          "flow_rate_window": "Časové okno v sekundách pro výpočet průtoku (0 = neustálý průtok od začátku)"
         }
       }
     },
@@ -34,7 +34,7 @@
         },
         "data_description": {
           "pulses_per_liter": "Počet pulzů na litr (závisí na vašem průtokoměru)",
-          "flow_rate_window": "Časové okno v sekundách pro výpočet průtoku"
+          "flow_rate_window": "Časové okno v sekundách pro výpočet průtoku (0 = neustálý průtok od začátku)"
         }
       }
     }

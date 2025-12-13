@@ -12,7 +12,7 @@
         "data_description": {
           "source_sensor": "Select the entity that provides pulse counts (sensor, counter or input_number)",
           "pulses_per_liter": "Number of pulses per liter (depends on your flow meter)",
-          "flow_rate_window": "Time window in seconds for calculating flow rate"
+          "flow_rate_window": "Time window in seconds for calculating flow rate (0 = continuous flow from start)"
         }
       }
     },
@@ -34,7 +34,7 @@
         },
         "data_description": {
           "pulses_per_liter": "Number of pulses per liter (depends on your flow meter)",
-          "flow_rate_window": "Time window in seconds for calculating flow rate"
+          "flow_rate_window": "Time window in seconds for calculating flow rate (0 = continuous flow from start)"
         }
       }
     }

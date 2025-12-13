@@ -72,8 +72,8 @@ class WaterFlowMeterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     default=DEFAULT_FLOW_RATE_WINDOW
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
-                        min=10,
-                        max=600,
+                        min=0,
+                        max=3600,
                         step=10,
                         unit_of_measurement="seconds",
                         mode=selector.NumberSelectorMode.BOX,
@@ -139,8 +139,8 @@ class WaterFlowMeterOptionsFlow(config_entries.OptionsFlow):
                     ),
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
-                        min=10,
-                        max=600,
+                        min=0,
+                        max=3600,
                         step=10,
                         unit_of_measurement="seconds",
                         mode=selector.NumberSelectorMode.BOX,

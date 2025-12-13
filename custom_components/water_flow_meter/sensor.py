@@ -341,7 +341,22 @@ class WaterFlowRateSensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per minute."""
-        # Clean old pulses before calculating
+        # If window is 0, calculate continuous flow from start
+        if self._flow_rate_window == 0:
+            # Calculate total time since start
+            total_time = (dt_util.utcnow() - self._stats.start_time).total_seconds()
+            if total_time < 1:  # Avoid division by zero
+                return 0.0
+
+            # Calculate average flow from all pulses
+            total_pulses = len(self._stats.all_pulse_times)
+            pulses_per_second = total_pulses / total_time
+            pulses_per_minute = pulses_per_second * 60
+            liters_per_minute = pulses_per_minute / self._pulses_per_liter
+
+            return round(liters_per_minute, 2)
+
+        # Clean old pulses before calculating (sliding window mode)
         self._stats.clean_old_flow_pulses(self._flow_rate_window)
 
         if not self._stats.flow_pulse_times:
@@ -416,7 +431,23 @@ class WaterFlowRateHourlySensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per hour."""
-        # Clean old pulses before calculating
+        # If window is 0, calculate continuous flow from start
+        if self._flow_rate_window == 0:
+            # Calculate total time since start
+            total_time = (dt_util.utcnow() - self._stats.start_time).total_seconds()
+            if total_time < 1:  # Avoid division by zero
+                return 0.0
+
+            # Calculate average flow from all pulses
+            total_pulses = len(self._stats.all_pulse_times)
+            pulses_per_second = total_pulses / total_time
+            pulses_per_minute = pulses_per_second * 60
+            liters_per_minute = pulses_per_minute / self._pulses_per_liter
+            liters_per_hour = liters_per_minute * 60
+
+            return round(liters_per_hour, 2)
+
+        # Clean old pulses before calculating (sliding window mode)
         self._stats.clean_old_flow_pulses(self._flow_rate_window)
 
         if not self._stats.flow_pulse_times:
@@ -486,7 +517,21 @@ class WaterFlowRateSecondarySensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per second."""
-        # Clean old pulses before calculating
+        # If window is 0, calculate continuous flow from start
+        if self._flow_rate_window == 0:
+            # Calculate total time since start
+            total_time = (dt_util.utcnow() - self._stats.start_time).total_seconds()
+            if total_time < 1:  # Avoid division by zero
+                return 0.0
+
+            # Calculate average flow from all pulses
+            total_pulses = len(self._stats.all_pulse_times)
+            pulses_per_second = total_pulses / total_time
+            liters_per_second = pulses_per_second / self._pulses_per_liter
+
+            return round(liters_per_second, 3)
+
+        # Clean old pulses before calculating (sliding window mode)
         self._stats.clean_old_flow_pulses(self._flow_rate_window)
 
         if not self._stats.flow_pulse_times:
@@ -554,7 +599,21 @@ class WaterPulseRateSensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the pulse rate per minute."""
-        # Clean old pulses before calculating
+        # If window is 0, calculate continuous pulse rate from start
+        if self._flow_rate_window == 0:
+            # Calculate total time since start
+            total_time = (dt_util.utcnow() - self._stats.start_time).total_seconds()
+            if total_time < 1:  # Avoid division by zero
+                return 0.0
+
+            # Calculate average pulse rate from all pulses
+            total_pulses = len(self._stats.all_pulse_times)
+            pulses_per_second = total_pulses / total_time
+            pulses_per_minute = pulses_per_second * 60
+
+            return round(pulses_per_minute, 2)
+
+        # Clean old pulses before calculating (sliding window mode)
         self._stats.clean_old_flow_pulses(self._flow_rate_window)
 
         if not self._stats.flow_pulse_times:
