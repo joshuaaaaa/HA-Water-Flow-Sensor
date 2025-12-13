@@ -6,10 +6,12 @@ DOMAIN = "water_flow_meter"
 CONF_SOURCE_SENSOR = "source_sensor"
 CONF_PULSES_PER_LITER = "pulses_per_liter"
 CONF_FLOW_RATE_WINDOW = "flow_rate_window"
+CONF_MIN_FLOW_THRESHOLD = "min_flow_threshold"
 
 # Default values
 DEFAULT_PULSES_PER_LITER = 1.0
 DEFAULT_FLOW_RATE_WINDOW = 60  # seconds
+DEFAULT_MIN_FLOW_THRESHOLD = 0.5  # L/min - minimum expected flow rate
 
 # Sensor types
 SENSOR_TYPE_FLOW_RATE = "flow_rate"

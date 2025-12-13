@@ -12,6 +12,10 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     UnitOfTime,
@@ -55,6 +59,10 @@ class WaterFlowStatistics:
         self.flow_start_time: datetime | None = None
         self.last_reset_date: datetime = dt_util.now().date()
 
+        # Flow state tracking
+        self.is_flowing: bool = False
+        self.flow_starts_today: int = 0  # Number of times flow started today
+
         # Flow history for average calculation
         self.flow_history: list[tuple[datetime, float]] = []
 
@@ -73,6 +81,8 @@ class WaterFlowStatistics:
             "last_reset_date": self.last_reset_date.isoformat(),
             "last_pulse_time": self.last_pulse_time.isoformat() if self.last_pulse_time else None,
             "start_time": self.start_time.isoformat(),
+            "is_flowing": self.is_flowing,
+            "flow_starts_today": self.flow_starts_today,
         }
 
     def from_dict(self, data: dict[str, Any]) -> None:
@@ -80,6 +90,8 @@ class WaterFlowStatistics:
         try:
             self.max_flow_today = data.get("max_flow_today", 0.0)
             self.total_flow_duration_today = data.get("total_flow_duration_today", 0.0)
+            self.is_flowing = data.get("is_flowing", False)
+            self.flow_starts_today = data.get("flow_starts_today", 0)
 
             if flow_start := data.get("flow_start_time"):
                 self.flow_start_time = dt_util.parse_datetime(flow_start)
@@ -101,6 +113,7 @@ class WaterFlowStatistics:
         self.total_flow_duration_today = 0.0
         self.flow_start_time = None
         self.flow_history.clear()
+        self.flow_starts_today = 0
         self.last_reset_date = dt_util.now().date()
 
     def check_and_reset_daily(self) -> None:
@@ -118,10 +131,16 @@ class WaterFlowStatistics:
         if current_flow > self.max_flow_today:
             self.max_flow_today = current_flow
 
-        # Track flow duration (flow > 0.1 L/min)
-        if current_flow > 0.1:
+        # Track flow state changes and duration (flow > 0.1 L/min)
+        was_flowing = self.is_flowing
+        self.is_flowing = current_flow > 0.1
+
+        if self.is_flowing:
             if self.flow_start_time is None:
                 self.flow_start_time = now
+                # Count flow starts (transition from not flowing to flowing)
+                if not was_flowing:
+                    self.flow_starts_today += 1
         else:
             if self.flow_start_time is not None:
                 duration = (now - self.flow_start_time).total_seconds()
@@ -259,6 +278,9 @@ async def async_setup_entry(
         WaterTimeSinceLastPulseSensor(source_sensor, config_entry.entry_id, stats),
         WaterAveragePulseIntervalSensor(source_sensor, config_entry.entry_id, stats),
         WaterUptimeSensor(source_sensor, config_entry.entry_id, stats),
+        WaterIsFlowingBinarySensor(source_sensor, config_entry.entry_id, stats),
+        WaterFlowStartsTodaySensor(source_sensor, config_entry.entry_id, stats),
+        WaterRunningTimeTodaySensor(source_sensor, config_entry.entry_id, stats),
     ]
 
     # Store entities for service calls
@@ -1044,4 +1066,159 @@ class WaterUptimeSensor(SensorEntity):
         return {
             "start_time": self._stats.start_time.isoformat(),
             "uptime_formatted": f"{days}d {hours}h {minutes}m",
+        }
+
+
+class WaterIsFlowingBinarySensor(BinarySensorEntity):
+    """Binary sensor indicating if water is flowing."""
+
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        source_sensor: str,
+        entry_id: str,
+        stats: WaterFlowStatistics,
+    ) -> None:
+        """Initialize the sensor."""
+        self._source_sensor = source_sensor
+        self._entry_id = entry_id
+        self._stats = stats
+
+        self._attr_name = f"Water Is Flowing ({source_sensor.split('.')[-1]})"
+        self._attr_unique_id = f"{entry_id}_is_flowing"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
+
+    async def async_added_to_hass(self) -> None:
+        """Register state listener."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, self._source_sensor, self._async_sensor_changed
+            )
+        )
+
+    @callback
+    def _async_sensor_changed(self, event) -> None:
+        """Handle source sensor state changes."""
+        self.async_write_ha_state()
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if water is flowing."""
+        return self._stats.is_flowing
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        attrs = {}
+        if self._stats.flow_start_time:
+            current_flow_duration = (dt_util.utcnow() - self._stats.flow_start_time).total_seconds()
+            attrs["current_flow_duration"] = round(current_flow_duration, 1)
+        return attrs
+
+
+class WaterFlowStartsTodaySensor(SensorEntity):
+    """Sensor for number of flow starts today."""
+
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = "starts"
+    _attr_icon = "mdi:restart"
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        source_sensor: str,
+        entry_id: str,
+        stats: WaterFlowStatistics,
+    ) -> None:
+        """Initialize the sensor."""
+        self._source_sensor = source_sensor
+        self._entry_id = entry_id
+        self._stats = stats
+
+        self._attr_name = f"Water Flow Starts Today ({source_sensor.split('.')[-1]})"
+        self._attr_unique_id = f"{entry_id}_flow_starts_today"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
+
+    async def async_added_to_hass(self) -> None:
+        """Register state listener."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, self._source_sensor, self._async_sensor_changed
+            )
+        )
+
+    @callback
+    def _async_sensor_changed(self, event) -> None:
+        """Handle source sensor state changes."""
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of flow starts today."""
+        self._stats.check_and_reset_daily()
+        return self._stats.flow_starts_today
+
+
+class WaterRunningTimeTodaySensor(SensorEntity):
+    """Sensor for total running time today."""
+
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_icon = "mdi:timer"
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        source_sensor: str,
+        entry_id: str,
+        stats: WaterFlowStatistics,
+    ) -> None:
+        """Initialize the sensor."""
+        self._source_sensor = source_sensor
+        self._entry_id = entry_id
+        self._stats = stats
+
+        self._attr_name = f"Water Running Time Today ({source_sensor.split('.')[-1]})"
+        self._attr_unique_id = f"{entry_id}_running_time_today"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
+
+    async def async_added_to_hass(self) -> None:
+        """Register state listener."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, self._source_sensor, self._async_sensor_changed
+            )
+        )
+
+    @callback
+    def _async_sensor_changed(self, event) -> None:
+        """Handle source sensor state changes."""
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> float:
+        """Return total running time today in seconds."""
+        self._stats.check_and_reset_daily()
+
+        # Add current flow duration if flowing
+        total_duration = self._stats.total_flow_duration_today
+        if self._stats.flow_start_time is not None:
+            current_duration = (dt_util.utcnow() - self._stats.flow_start_time).total_seconds()
+            total_duration += current_duration
+
+        return round(total_duration, 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        total_seconds = self.native_value or 0
+        hours = int(total_seconds // 3600)
+        minutes = int((total_seconds % 3600) // 60)
+
+        return {
+            "formatted": f"{hours}h {minutes}m",
+            "hours": round(hours + (minutes / 60), 2),
         }
