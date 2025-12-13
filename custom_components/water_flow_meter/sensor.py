@@ -179,6 +179,27 @@ class WaterFlowStatistics:
 
         return sum(intervals) / len(intervals)
 
+    def get_instantaneous_pulse_interval(self) -> float | None:
+        """Get instantaneous interval between last few pulses in seconds."""
+        if len(self.all_pulse_times) < 2:
+            return None
+
+        # Use last 3 pulses for stability (average of last 2 intervals)
+        recent_pulses = list(self.all_pulse_times)[-3:]
+        if len(recent_pulses) < 2:
+            return None
+
+        intervals = []
+        for i in range(1, len(recent_pulses)):
+            interval = (recent_pulses[i] - recent_pulses[i-1]).total_seconds()
+            if interval > 0:
+                intervals.append(interval)
+
+        if not intervals:
+            return None
+
+        return sum(intervals) / len(intervals)
+
     def get_time_since_last_pulse(self) -> float | None:
         """Get time since last pulse in seconds."""
         if self.last_pulse_time is None:
@@ -232,6 +253,8 @@ async def async_setup_entry(
         WaterFlowRateHourlySensor(source_sensor, pulses_per_liter, flow_rate_window, config_entry.entry_id, stats),
         WaterFlowRateSecondarySensor(source_sensor, pulses_per_liter, flow_rate_window, config_entry.entry_id, stats),
         WaterPulseRateSensor(source_sensor, flow_rate_window, config_entry.entry_id, stats),
+        WaterInstantaneousFlowRateSensor(source_sensor, pulses_per_liter, config_entry.entry_id, stats),
+        WaterInstantaneousPulseRateSensor(source_sensor, config_entry.entry_id, stats),
         WaterTotalVolumeSensor(source_sensor, pulses_per_liter, config_entry.entry_id, stats),
         WaterTimeSinceLastPulseSensor(source_sensor, config_entry.entry_id, stats),
         WaterAveragePulseIntervalSensor(source_sensor, config_entry.entry_id, stats),
@@ -543,6 +566,139 @@ class WaterPulseRateSensor(SensorEntity):
         """Return extra state attributes."""
         attrs = {
             ATTR_PULSE_COUNT: len(self._stats.flow_pulse_times),
+        }
+
+        if self._stats.last_pulse_time:
+            attrs[ATTR_LAST_PULSE_TIME] = self._stats.last_pulse_time.isoformat()
+
+        return attrs
+
+
+class WaterInstantaneousFlowRateSensor(SensorEntity):
+    """Sensor for instantaneous water flow rate in liters per minute (calculated from pulse interval)."""
+
+    _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+    _attr_icon = "mdi:water-pump"
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        source_sensor: str,
+        pulses_per_liter: float,
+        entry_id: str,
+        stats: WaterFlowStatistics,
+    ) -> None:
+        """Initialize the instantaneous flow rate sensor."""
+        self._source_sensor = source_sensor
+        self._pulses_per_liter = pulses_per_liter
+        self._entry_id = entry_id
+        self._stats = stats
+
+        self._attr_name = f"Water Instantaneous Flow Rate ({source_sensor.split('.')[-1]})"
+        self._attr_unique_id = f"{entry_id}_instantaneous_flow_rate"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
+
+    async def async_added_to_hass(self) -> None:
+        """Register state listener."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, self._source_sensor, self._async_sensor_changed
+            )
+        )
+
+    @callback
+    def _async_sensor_changed(self, event) -> None:
+        """Handle source sensor state changes."""
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the instantaneous flow rate in liters per minute."""
+        # Get average interval between last few pulses
+        interval = self._stats.get_instantaneous_pulse_interval()
+
+        if interval is None or interval == 0:
+            return 0.0
+
+        # Calculate flow rate from pulse interval
+        # Flow = (1/pulses_per_liter) / interval_seconds * 60
+        liters_per_pulse = 1.0 / self._pulses_per_liter
+        liters_per_second = liters_per_pulse / interval
+        liters_per_minute = liters_per_second * 60
+
+        return round(liters_per_minute, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        attrs = {
+            ATTR_PULSES_PER_LITER: self._pulses_per_liter,
+            "pulse_interval": self._stats.get_instantaneous_pulse_interval(),
+        }
+
+        if self._stats.last_pulse_time:
+            attrs[ATTR_LAST_PULSE_TIME] = self._stats.last_pulse_time.isoformat()
+
+        return attrs
+
+
+class WaterInstantaneousPulseRateSensor(SensorEntity):
+    """Sensor for instantaneous pulse rate per minute (calculated from pulse interval)."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "pulses/min"
+    _attr_icon = "mdi:counter"
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        source_sensor: str,
+        entry_id: str,
+        stats: WaterFlowStatistics,
+    ) -> None:
+        """Initialize the instantaneous pulse rate sensor."""
+        self._source_sensor = source_sensor
+        self._entry_id = entry_id
+        self._stats = stats
+
+        self._attr_name = f"Water Instantaneous Pulse Rate ({source_sensor.split('.')[-1]})"
+        self._attr_unique_id = f"{entry_id}_instantaneous_pulse_rate"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
+
+    async def async_added_to_hass(self) -> None:
+        """Register state listener."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, self._source_sensor, self._async_sensor_changed
+            )
+        )
+
+    @callback
+    def _async_sensor_changed(self, event) -> None:
+        """Handle source sensor state changes."""
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the instantaneous pulse rate per minute."""
+        # Get average interval between last few pulses
+        interval = self._stats.get_instantaneous_pulse_interval()
+
+        if interval is None or interval == 0:
+            return 0.0
+
+        # Calculate pulse rate: 60 seconds / interval
+        pulses_per_minute = 60.0 / interval
+
+        return round(pulses_per_minute, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        attrs = {
+            "pulse_interval": self._stats.get_instantaneous_pulse_interval(),
         }
 
         if self._stats.last_pulse_time:
