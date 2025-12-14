@@ -69,6 +69,7 @@ class WaterFlowStatistics:
         # Pulse tracking
         self.all_pulse_times: deque = deque(maxlen=1000)  # Keep last 1000 pulses
         self.flow_pulse_times: deque = deque()  # Shared deque for flow rate window
+        self.total_pulse_count: int = 0  # Total pulses since start (no limit)
         self.last_pulse_time: datetime | None = None
         self.last_pulse_value: float | None = None
 
