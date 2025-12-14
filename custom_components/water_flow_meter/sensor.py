@@ -70,6 +70,7 @@ class WaterFlowStatistics:
         self.all_pulse_times: deque = deque(maxlen=1000)  # Keep last 1000 pulses
         self.flow_pulse_times: deque = deque()  # Shared deque for flow rate window
         self.total_pulse_count: int = 0  # Total pulses since start (no limit)
+        self.total_pulses: float = 0.0  # Total pulses for volume calculation
         self.last_pulse_time: datetime | None = None
         self.last_pulse_value: float | None = None
 
@@ -84,6 +85,7 @@ class WaterFlowStatistics:
             "start_time": self.start_time.isoformat(),
             "is_flowing": self.is_flowing,
             "flow_starts_today": self.flow_starts_today,
+            "total_pulses": self.total_pulses,
         }
 
     def from_dict(self, data: dict[str, Any]) -> None:
@@ -93,6 +95,7 @@ class WaterFlowStatistics:
             self.total_flow_duration_today = data.get("total_flow_duration_today", 0.0)
             self.is_flowing = data.get("is_flowing", False)
             self.flow_starts_today = data.get("flow_starts_today", 0)
+            self.total_pulses = data.get("total_pulses", 0.0)
 
             if flow_start := data.get("flow_start_time"):
                 self.flow_start_time = dt_util.parse_datetime(flow_start)
@@ -172,6 +175,7 @@ class WaterFlowStatistics:
         for _ in range(pulse_count):
             self.all_pulse_times.append(pulse_time)
             self.flow_pulse_times.append(pulse_time)
+        self.total_pulses += pulse_count
         self.last_pulse_time = pulse_time
 
     def clean_old_flow_pulses(self, window_seconds: int) -> None:
@@ -818,8 +822,6 @@ class WaterTotalVolumeSensor(RestoreEntity, SensorEntity):
         self._attr_unique_id = f"{entry_id}_total_volume"
         self._attr_device_info = get_device_info(source_sensor, entry_id)
 
-        self._total_pulses: float = 0.0
-
     async def async_added_to_hass(self) -> None:
         """Restore state and register state listener."""
         await super().async_added_to_hass()
@@ -827,12 +829,7 @@ class WaterTotalVolumeSensor(RestoreEntity, SensorEntity):
         # Restore previous state
         if (last_state := await self.async_get_last_state()) is not None:
             try:
-                # Restore total pulses
-                if last_state.state not in ("unknown", "unavailable"):
-                    last_volume = float(last_state.state)
-                    self._total_pulses = last_volume * self._pulses_per_liter
-
-                # Restore statistics
+                # Restore statistics (including total_pulses)
                 if "statistics" in last_state.attributes:
                     self._stats.from_dict(last_state.attributes["statistics"])
 
@@ -855,37 +852,24 @@ class WaterTotalVolumeSensor(RestoreEntity, SensorEntity):
 
     async def async_reset_total_volume(self) -> None:
         """Reset total volume to zero."""
-        self._total_pulses = 0.0
+        self._stats.total_pulses = 0.0
         self.async_write_ha_state()
 
     async def async_set_total_volume(self, volume: float) -> None:
         """Set total volume to a specific value."""
-        self._total_pulses = volume * self._pulses_per_liter
+        self._stats.total_pulses = volume * self._pulses_per_liter
         self.async_write_ha_state()
 
     @callback
     def _async_sensor_changed(self, event) -> None:
         """Handle source sensor state changes."""
-        new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            return
-
-        try:
-            new_value = float(new_state.state)
-        except (ValueError, TypeError):
-            return
-
-        # Detect pulse (increment in value)
-        if self._stats.last_pulse_value is not None and new_value > self._stats.last_pulse_value:
-            pulse_count = new_value - self._stats.last_pulse_value
-            self._total_pulses += pulse_count
-
+        # Just update state - pulse counting is done in WaterFlowRateSensor
         self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
         """Return the total volume in liters."""
-        total_liters = self._total_pulses / self._pulses_per_liter
+        total_liters = self._stats.total_pulses / self._pulses_per_liter
         return round(total_liters, 3)
 
     @property
@@ -893,7 +877,7 @@ class WaterTotalVolumeSensor(RestoreEntity, SensorEntity):
         """Return extra state attributes."""
         return {
             ATTR_PULSES_PER_LITER: self._pulses_per_liter,
-            ATTR_PULSE_COUNT: self._total_pulses,
+            ATTR_PULSE_COUNT: self._stats.total_pulses,
             "statistics": self._stats.to_dict(),
         }
 
