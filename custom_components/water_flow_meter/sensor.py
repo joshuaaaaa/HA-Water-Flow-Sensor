@@ -364,18 +364,18 @@ class WaterFlowRateSensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per minute."""
-        # If window is 0, calculate continuous flow from start
+        # If window is 0, use instantaneous calculation based on pulse interval
         if self._flow_rate_window == 0:
-            # Calculate total time since start
-            total_time = (dt_util.utcnow() - self._stats.start_time).total_seconds()
-            if total_time < 1:  # Avoid division by zero
+            interval = self._stats.get_instantaneous_pulse_interval()
+
+            if interval is None or interval == 0:
                 return 0.0
 
-            # Calculate average flow from all pulses
-            total_pulses = len(self._stats.all_pulse_times)
-            pulses_per_second = total_pulses / total_time
-            pulses_per_minute = pulses_per_second * 60
-            liters_per_minute = pulses_per_minute / self._pulses_per_liter
+            # Calculate flow rate from pulse interval
+            # Flow = (1/pulses_per_liter) / interval_seconds * 60
+            liters_per_pulse = 1.0 / self._pulses_per_liter
+            liters_per_second = liters_per_pulse / interval
+            liters_per_minute = liters_per_second * 60
 
             return round(liters_per_minute, 2)
 
@@ -454,18 +454,17 @@ class WaterFlowRateHourlySensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per hour."""
-        # If window is 0, calculate continuous flow from start
+        # If window is 0, use instantaneous calculation based on pulse interval
         if self._flow_rate_window == 0:
-            # Calculate total time since start
-            total_time = (dt_util.utcnow() - self._stats.start_time).total_seconds()
-            if total_time < 1:  # Avoid division by zero
+            interval = self._stats.get_instantaneous_pulse_interval()
+
+            if interval is None or interval == 0:
                 return 0.0
 
-            # Calculate average flow from all pulses
-            total_pulses = len(self._stats.all_pulse_times)
-            pulses_per_second = total_pulses / total_time
-            pulses_per_minute = pulses_per_second * 60
-            liters_per_minute = pulses_per_minute / self._pulses_per_liter
+            # Calculate flow rate from pulse interval
+            liters_per_pulse = 1.0 / self._pulses_per_liter
+            liters_per_second = liters_per_pulse / interval
+            liters_per_minute = liters_per_second * 60
             liters_per_hour = liters_per_minute * 60
 
             return round(liters_per_hour, 2)
@@ -540,17 +539,16 @@ class WaterFlowRateSecondarySensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the flow rate in liters per second."""
-        # If window is 0, calculate continuous flow from start
+        # If window is 0, use instantaneous calculation based on pulse interval
         if self._flow_rate_window == 0:
-            # Calculate total time since start
-            total_time = (dt_util.utcnow() - self._stats.start_time).total_seconds()
-            if total_time < 1:  # Avoid division by zero
+            interval = self._stats.get_instantaneous_pulse_interval()
+
+            if interval is None or interval == 0:
                 return 0.0
 
-            # Calculate average flow from all pulses
-            total_pulses = len(self._stats.all_pulse_times)
-            pulses_per_second = total_pulses / total_time
-            liters_per_second = pulses_per_second / self._pulses_per_liter
+            # Calculate flow rate from pulse interval
+            liters_per_pulse = 1.0 / self._pulses_per_liter
+            liters_per_second = liters_per_pulse / interval
 
             return round(liters_per_second, 3)
 
@@ -622,17 +620,15 @@ class WaterPulseRateSensor(SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the pulse rate per minute."""
-        # If window is 0, calculate continuous pulse rate from start
+        # If window is 0, use instantaneous calculation based on pulse interval
         if self._flow_rate_window == 0:
-            # Calculate total time since start
-            total_time = (dt_util.utcnow() - self._stats.start_time).total_seconds()
-            if total_time < 1:  # Avoid division by zero
+            interval = self._stats.get_instantaneous_pulse_interval()
+
+            if interval is None or interval == 0:
                 return 0.0
 
-            # Calculate average pulse rate from all pulses
-            total_pulses = len(self._stats.all_pulse_times)
-            pulses_per_second = total_pulses / total_time
-            pulses_per_minute = pulses_per_second * 60
+            # Calculate pulse rate: 60 seconds / interval
+            pulses_per_minute = 60.0 / interval
 
             return round(pulses_per_minute, 2)
 
