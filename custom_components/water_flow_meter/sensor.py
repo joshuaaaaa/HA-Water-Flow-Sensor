@@ -276,6 +276,7 @@ async def async_setup_entry(
         WaterFlowRateSensor(source_sensor, pulses_per_liter, flow_rate_window, config_entry.entry_id, stats),
         WaterFlowRateHourlySensor(source_sensor, pulses_per_liter, flow_rate_window, config_entry.entry_id, stats),
         WaterFlowRateSecondarySensor(source_sensor, pulses_per_liter, flow_rate_window, config_entry.entry_id, stats),
+        WaterFlowRate5SecondSensor(source_sensor, pulses_per_liter, config_entry.entry_id, stats),
         WaterPulseRateSensor(source_sensor, flow_rate_window, config_entry.entry_id, stats),
         WaterInstantaneousFlowRateSensor(source_sensor, pulses_per_liter, config_entry.entry_id, stats),
         WaterInstantaneousPulseRateSensor(source_sensor, config_entry.entry_id, stats),
@@ -580,6 +581,85 @@ class WaterFlowRateSecondarySensor(SensorEntity):
         return {
             ATTR_PULSES_PER_LITER: self._pulses_per_liter,
             ATTR_PULSE_COUNT: len(self._stats.flow_pulse_times),
+        }
+
+
+class WaterFlowRate5SecondSensor(SensorEntity):
+    """Sensor for water flow rate with 5-second window in liters per minute."""
+
+    _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+    _attr_icon = "mdi:water-pump"
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        source_sensor: str,
+        pulses_per_liter: float,
+        entry_id: str,
+        stats: WaterFlowStatistics,
+    ) -> None:
+        """Initialize the 5-second flow rate sensor."""
+        self._source_sensor = source_sensor
+        self._pulses_per_liter = pulses_per_liter
+        self._entry_id = entry_id
+        self._stats = stats
+        self._flow_rate_window = 5  # Fixed 5-second window
+
+        self._attr_name = f"Water Flow Rate 5 Second ({source_sensor.split('.')[-1]})"
+        self._attr_unique_id = f"{entry_id}_flow_rate_5_second"
+        self._attr_device_info = get_device_info(source_sensor, entry_id)
+
+    async def async_added_to_hass(self) -> None:
+        """Register state listener."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, self._source_sensor, self._async_sensor_changed
+            )
+        )
+
+    @callback
+    def _async_sensor_changed(self, event) -> None:
+        """Handle source sensor state changes."""
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the flow rate in liters per minute (5-second window)."""
+        # Create a temporary deque for 5-second window
+        from collections import deque
+        window_pulses = deque()
+
+        # Get all pulses from the last 5 seconds
+        cutoff_time = dt_util.utcnow() - timedelta(seconds=5)
+        for pulse_time in self._stats.all_pulse_times:
+            if pulse_time > cutoff_time:
+                window_pulses.append(pulse_time)
+
+        if not window_pulses:
+            return 0.0
+
+        # Calculate pulses per minute based on 5-second window
+        pulses_in_window = len(window_pulses)
+        window_minutes = 5.0 / 60.0  # 5 seconds in minutes
+
+        pulses_per_minute = pulses_in_window / window_minutes
+        liters_per_minute = pulses_per_minute / self._pulses_per_liter
+
+        return round(liters_per_minute, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        # Count pulses in last 5 seconds
+        cutoff_time = dt_util.utcnow() - timedelta(seconds=5)
+        pulse_count = sum(1 for pt in self._stats.all_pulse_times if pt > cutoff_time)
+
+        return {
+            ATTR_PULSES_PER_LITER: self._pulses_per_liter,
+            ATTR_PULSE_COUNT: pulse_count,
+            "window_seconds": 5,
         }
 
 
